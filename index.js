@@ -1,4 +1,4 @@
-var lo = require('lodash'),
+var _ = require('lodash'),
     Promise = require('bluebird');
 
 function Tree(Model, config) {
@@ -31,30 +31,27 @@ function Tree(Model, config) {
             options = {};
         }
 
-        return locateNode(parent)
-            .then(function (Parent) {
-                return Model.find({where: {ancestors: Parent.id}, order: 'orderBy ASC'})
-                    .then(function (docs) {
+        locateNodeWithCallback(parent, function (err, Parent) {
+            if(err) return callback(err);
+            Model.find({where: {ancestors: Parent.id}, order: 'orderBy ASC'}, function (err, docs) {
+                if(err) return callback(err);
+                var tree = toTree(docs, options);
 
-                        var tree = toTree(docs, options);
+                if (options.withParent) {
+                    Parent.children = tree;
+                    if (typeof callback == 'function') {
+                        return callback(null, {result: tree});
+                    }
 
-                        if (options.withParent) {
-                            Parent.children = tree;
-                            if (typeof callback == 'function') {
-                                callback(null, {result: tree});
-                            }
+                    return Parent;
+                }
 
-                            return Parent;
-                        }
-
-                        if (typeof callback == 'function') {
-                            callback(null, {result: tree});
-                        }
-
-                        return tree;
-                    });
-            })
-            .catch(handleErr);
+                if (typeof callback == 'function') {
+                    return callback(null, {result: tree});
+                }
+                return tree;
+            });
+        });
     };
 
     Model.addNode = function (parent, node, callback) {
@@ -107,7 +104,7 @@ function Tree(Model, config) {
                         }
 
                         var tasks = [];
-                        lo.forEach(children, function (child) {
+                        _.forEach(children, function (child) {
                             child.ancestors = results.child.ancestors;
                             child.ancestors.push(results.child.id);
                             tasks.push(child.save());
@@ -210,17 +207,17 @@ function Tree(Model, config) {
             return locateNode(options.prependRoot)
                 .then(function (rootNode) {
                     options.prependRoot = rootNode;
-                    return process(flat,options).then(function (result) {
-                        if (typeof callback == 'function'){
-                            callback(null,result);
+                    return process(flat, options).then(function (result) {
+                        if (typeof callback == 'function') {
+                            callback(null, result);
                         }
                     });
                 });
         }
 
-        return process(flat,options).then(function (result) {
-            if (typeof callback == 'function'){
-                callback(null,result);
+        return process(flat, options).then(function (result) {
+            if (typeof callback == 'function') {
+                callback(null, result);
             }
         });
 
@@ -233,8 +230,8 @@ function Tree(Model, config) {
             }
 
             return Promise.all(tasks).then(function () {
-                return flat;
-            })
+                    return flat;
+                })
                 .catch(function (err) {
                     console.log(err)
                 });
@@ -307,13 +304,34 @@ function Tree(Model, config) {
         }
     };
 
+    function locateNodeWithCallback(node, cb) {
+
+        var where = {};
+        if (typeof node == 'string') {//Hoping on an id
+            where.id = node;
+        }
+        else if (typeof node == 'undefined' || (typeof node == 'object' && _.isEmpty(node))) {
+            return cb(null, {id: []});
+        }
+        else if (typeof node.id != 'undefined') {//this is the actual node model
+            return cb(null, node);
+        } else if (typeof node === 'object' && typeof node.id == 'undefined') {//this is a query
+            where = node;
+        }
+
+        return Model.findOne({where: where}, function (err, model) {
+            if (err) return cb(err);
+            return cb(null, model);
+        });
+    }
+
     function locateNode(node) {
 
         var where = {};
         if (typeof node == 'string') {//Hoping on an id
             where.id = node;
         }
-        else if (typeof node == 'undefined' || (typeof node == 'object' && lo.isEmpty(node))) {
+        else if (typeof node == 'undefined' || (typeof node == 'object' && _.isEmpty(node))) {
             return Promise.resolve({id: []});
         }
         else if (typeof node.id != 'undefined') {//this is the actual node model
@@ -337,7 +355,7 @@ function Tree(Model, config) {
             options = {};
         }
 
-        var tree = lo.clone(docs),
+        var tree = _.clone(docs),
             newTree = [],
             treeDepth = [];
 
@@ -348,7 +366,7 @@ function Tree(Model, config) {
                 continue;
             }
 
-            if (!tree[i].children){
+            if (!tree[i].children) {
                 tree[i].children = [];
             }
 
@@ -361,13 +379,13 @@ function Tree(Model, config) {
             return docs;
         }
 
-        tree = lo.sortBy(tree, 'depth');
+        tree = _.sortBy(tree, 'depth');
 
-        var maxDepth = lo.max(treeDepth),
-            minDepth = lo.min(treeDepth);
+        var maxDepth = _.max(treeDepth),
+            minDepth = _.min(treeDepth);
 
         for (var i = 0; (maxDepth) >= i; i++) {
-            var found = lo.filter(tree, {depth: i});
+            var found = _.filter(tree, {depth: i});
 
             if ((i) == minDepth) {
                 for (var a in found) {
@@ -378,7 +396,7 @@ function Tree(Model, config) {
             }
 
             for (var a in found) {
-                var item = lo.find(tree, {id: found[a].parent});
+                var item = _.find(tree, {id: found[a].parent});
                 //format this item, add - remove - change properties
                 if (typeof options.formatter == 'function') {
                     item = options.formatter(item);
@@ -389,7 +407,7 @@ function Tree(Model, config) {
                         item.children = [];
                     }
                     item.children.push(found[a]);
-                    item.children = lo.sortBy(item.children, 'orderBy');
+                    item.children = _.sortBy(item.children, 'orderBy');
                 }
             }
         }
